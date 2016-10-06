@@ -305,7 +305,7 @@ class CassettePatcherBuilder(object):
             (cpool, 'VerifiedHTTPSConnection', stubs.VCRRequestsHTTPSConnection),
             (cpool, 'HTTPConnection', stubs.VCRRequestsHTTPConnection),
             (cpool, 'HTTPSConnection', stubs.VCRRequestsHTTPSConnection),
-            (cpool, 'is_connection_dropped', mock.Mock(return_value=False)),  # Needed on Windows only
+            # (cpool, 'is_connection_dropped', mock.Mock(return_value=False)),  # Needed on Windows only
             (cpool.HTTPConnectionPool, 'ConnectionCls', stubs.VCRRequestsHTTPConnection),
             (cpool.HTTPSConnectionPool, 'ConnectionCls', stubs.VCRRequestsHTTPSConnection),
         )

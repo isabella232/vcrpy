@@ -1,6 +1,7 @@
 '''Stubs for patching HTTP and HTTPS requests'''
 
 import logging
+import os
 import six
 from six.moves.http_client import (
     HTTPConnection,
@@ -13,6 +14,13 @@ from vcr.errors import CannotOverwriteExistingCassetteException
 from . import compat
 
 log = logging.getLogger(__name__)
+
+# This is only done once for performance reasons.
+# This could be moved down to init if we need to support proxy changes at runtime.
+proxied_protocols = set()
+for proxy_key in ('http_proxy', 'https_proxy'):
+    if os.environ.get(proxy_key) or os.environ.get(proxy_key.upper()):
+        proxied_protocols.add(proxy_key.split('_')[0])
 
 
 class VCRFakeSocket(object):
@@ -37,13 +45,32 @@ class VCRFakeSocket(object):
         return 0  # wonder how bad this is....
 
 
+def transform_proxy_headers(header_list):
+    """Return a new dictionary, coercing proxy-specific headers into their non-proxied form.
+
+    This is needed for the recorded headers to match across proxied and non-proxied runs.
+
+    Specifically:
+      * proxy-connection is renamed to connection
+      * proxy-authorization is removed
+    """
+    filtered_headers = {}
+    for key, values in header_list.items():
+        if key.lower() == 'proxy-connection':
+            filtered_headers[key.split('-')[1]] = values
+        elif key.lower() != 'proxy-authorization':
+            filtered_headers[key] = values
+
+    return filtered_headers
+
+
 def parse_headers(header_list):
     """
     Convert headers from our serialized dict with lists for keys to a
     HTTPMessage
     """
     header_string = b""
-    for key, values in header_list.items():
+    for key, values in transform_proxy_headers(header_list).items():
         for v in values:
             header_string += \
                 key.encode('utf-8') + b":" + v.encode('utf-8') + b"\r\n"
@@ -55,7 +82,7 @@ def serialize_headers(response):
     for key, values in compat.get_headers(response.msg):
         out.setdefault(key, [])
         out[key].extend(values)
-    return out
+    return transform_proxy_headers(out)
 
 
 class VCRHTTPResponse(HTTPResponse):
@@ -130,15 +157,25 @@ class VCRConnection(object):
         """
         Returns empty string for the default port and ':port' otherwise
         """
-        port = self.real_connection.port
         default_port = {'https': 443, 'http': 80}[self._protocol]
+
+        if self._proxied:
+            port = self._proxied_port
+        else:
+            port = self.real_connection.port
+
         return ':{0}'.format(port) if port != default_port else ''
 
     def _uri(self, url):
         """Returns request absolute URI"""
+
+        if self._proxied and not self._proxied_host:
+            # We're not running with connect tunneling, so the url is already absolute.
+            return url
+
         uri = "{0}://{1}{2}{3}".format(
             self._protocol,
-            self.real_connection.host,
+            self._proxied_host if self._proxied else self.real_connection.host,
             self._port_postfix(),
             url,
         )
@@ -159,7 +196,7 @@ class VCRConnection(object):
             method=method,
             uri=self._uri(url),
             body=body,
-            headers=headers or {}
+            headers=transform_proxy_headers(headers or {})
         )
         log.debug('Got {0}'.format(self._vcr_request))
 
@@ -183,7 +220,7 @@ class VCRConnection(object):
         log.debug('Got {0}'.format(self._vcr_request))
 
     def putheader(self, header, *values):
-        self._vcr_request.headers[header] = values
+        self._vcr_request.headers.update(transform_proxy_headers({header: values}))
 
     def send(self, data):
         '''
@@ -254,6 +291,9 @@ class VCRConnection(object):
             # get the response
             response = self.real_connection.getresponse()
 
+            if self._proxied:
+                self.auto_open = 0
+
             # put the response into the cassette
             response = {
                 'status': {
@@ -293,6 +333,11 @@ class VCRConnection(object):
     def sock(self):
         if self.real_connection.sock:
             return self.real_connection.sock
+        elif self._proxied:
+            # urllib3 depends on sock being None to know when to call set_tunnel; see
+            # https://github.com/shazow/urllib3/blob/dfd582c13ceb0287a71ccff1c742424c58ca2105/urllib3/connectionpool.py#L586
+            return None
+
         return VCRFakeSocket()
 
     @sock.setter
@@ -310,6 +355,13 @@ class VCRConnection(object):
         from vcr.patch import force_reset
         with force_reset():
             self.real_connection = self._baseclass(*args, **kwargs)
+
+        self._proxied = self._protocol in proxied_protocols
+
+        # Set after a call to set_tunnel, which sets up https proxying.
+        # Will remain None if proxying http (since then they're specified in the url).
+        self._proxied_host = None
+        self._proxied_port = None
 
     def __setattr__(self, name, value):
         """
@@ -331,6 +383,17 @@ class VCRConnection(object):
             pass
 
         super(VCRConnection, self).__setattr__(name, value)
+
+    def set_tunnel(self, host, port=None, headers=None):
+        """Set up connect tunneling for https proxying."""
+
+        # We won't read the host and port unless self._proxied is set accordingly.
+        assert self._proxied, 'set_tunnel was called without the https_proxy env var being set'
+
+        self._proxied_host = host
+        self._proxied_port = port or {'https': 443, 'http': 80}[self._protocol]
+
+        self.real_connection.set_tunnel(host, port, headers)
 
 
 class VCRHTTPConnection(VCRConnection):
