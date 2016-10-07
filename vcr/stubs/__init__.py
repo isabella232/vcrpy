@@ -170,8 +170,11 @@ class VCRConnection(object):
         """Returns request absolute URI"""
 
         if self._proxied and not self._proxied_host:
-            # We're not running with connect tunneling, so the url is already absolute.
-            return url
+            if self._protocol == 'http':
+                # We're not running with connect tunneling, so the url is already absolute.
+                return url
+            else:
+                raise AssertionError('we should be proxied, but the client never called set_tunnel')
 
         uri = "{0}://{1}{2}{3}".format(
             self._protocol,
