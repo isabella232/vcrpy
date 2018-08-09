@@ -59,7 +59,7 @@ def build_uri(**parts):
     port = parts['port']
     scheme = parts['protocol']
     default_port = {'https': 443, 'http': 80}[scheme]
-    parts['port'] = ':{0}'.format(port) if port != default_port else ''
+    parts['port'] = ':{}'.format(port) if port != default_port else ''
     return "{protocol}://{host}{port}{path}".format(**parts)
 
 
@@ -161,8 +161,9 @@ def main():
     for file_path in files:
             migrated = try_migrate(file_path)
             status = 'OK' if migrated else 'FAIL'
-            sys.stderr.write("[{0}] {1}\n".format(status, file_path))
+            sys.stderr.write("[{}] {}\n".format(status, file_path))
     sys.stderr.write("Done.\n")
+
 
 if __name__ == '__main__':
     main()

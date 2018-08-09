@@ -1,4 +1,5 @@
 import copy
+import collections
 import functools
 import inspect
 import os
@@ -6,9 +7,9 @@ import types
 
 import six
 
-from .compat import collections
 from .cassette import Cassette
 from .serializers import yamlserializer, jsonserializer
+from .persisters.filesystem import FilesystemPersister
 from .util import compose, auto_decorate
 from . import matchers
 from . import filters
@@ -57,6 +58,7 @@ class VCR(object):
             'raw_body': matchers.raw_body,
             'body': matchers.body,
         }
+        self.persister = FilesystemPersister
         self.record_mode = record_mode
         self.filter_headers = filter_headers
         self.filter_query_parameters = filter_query_parameters
@@ -76,7 +78,7 @@ class VCR(object):
             serializer = self.serializers[serializer_name]
         except KeyError:
             raise KeyError(
-                "Serializer {0} doesn't exist or isn't registered".format(
+                "Serializer {} doesn't exist or isn't registered".format(
                     serializer_name
                 )
             )
@@ -89,7 +91,7 @@ class VCR(object):
                 matchers.append(self.matchers[m])
         except KeyError:
             raise KeyError(
-                "Matcher {0} doesn't exist or isn't registered".format(m)
+                "Matcher {} doesn't exist or isn't registered".format(m)
             )
         return matchers
 
@@ -143,6 +145,7 @@ class VCR(object):
 
         merged_config = {
             'serializer': self._get_serializer(serializer_name),
+            'persister': self.persister,
             'match_on': self._get_matchers(
                 tuple(matcher_names) + tuple(additional_matchers)
             ),
@@ -269,6 +272,10 @@ class VCR(object):
 
     def register_matcher(self, name, matcher):
         self.matchers[name] = matcher
+
+    def register_persister(self, persister):
+        # Singleton, no name required
+        self.persister = persister
 
     def test_case(self, predicate=None):
         predicate = predicate or self.is_test_method

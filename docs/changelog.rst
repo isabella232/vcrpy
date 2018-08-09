@@ -1,5 +1,15 @@
 Changelog
 ---------
+-  1.13.0 - Fix support to latest aiohttp version (3.3.2). Fix content-type bug in aiohttp stub. Save URL with query params properly when using aiohttp.
+-  1.12.0 - Fix support to latest aiohttp version (3.2.1), Adapted setup to PEP508, Support binary responses on aiohttp, Dropped support for EOL python versions (2.6 and 3.3)
+-  1.11.1 Fix compatibility with newest requests and urllib3 releases
+-  1.11.0 Allow injection of persistence methods + bugfixes (thanks @j-funk and @IvanMalison),
+   Support python 3.6 + CI tests (thanks @derekbekoe and @graingert),
+   Support pytest-asyncio coroutines (thanks @graingert)
+-  1.10.5 Added a fix to httplib2 (thanks @carlosds730), Fix an issue with
+   aiohttp (thanks @madninja), Add missing requirement yarl (thanks @lamenezes),
+   Remove duplicate mock triple (thanks @FooBarQuaxx)
+-  1.10.4 Fix an issue with asyncio aiohttp (thanks @madninja)
 -  1.10.3 Fix some issues with asyncio and params (thanks @anovikov1984 and
    @lamenezes), Fix some issues with cassette serialize / deserialize and empty
    response bodies (thanks @gRoussac and @dz0ny)

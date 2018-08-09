@@ -122,6 +122,27 @@ Finally, register your method with VCR to use your new request matcher.
     with my_vcr.use_cassette('test.yml'):
         # your http here
 
+Register your own cassette persister
+------------------------------------
+
+Create your own persistence class, see the :ref:`persister_example`.
+
+Your custom persister must implement both ``load_cassette`` and ``save_cassette``
+methods.  The ``load_cassette`` method must return a deserialized cassette or raise
+ ``ValueError`` if no cassette is found.
+
+Once the persister class is defined, register with VCR like so...
+
+.. code:: python
+
+    import vcr
+    my_vcr = vcr.VCR()
+
+    class CustomerPersister(object):
+        # implement Persister methods...
+
+    my_vcr.register_persister(CustomPersister)
+
 Filter sensitive data from the request
 --------------------------------------
 
@@ -201,7 +222,7 @@ Custom Request filtering
 
 If none of these covers your request filtering needs, you can register a
 callback that will manipulate the HTTP request before adding it to the
-cassette. Use the ``before_record`` configuration option to so this.
+cassette. Use the ``before_record_request`` configuration option to so this.
 Here is an example that will never record requests to the /login
 endpoint.
 
@@ -212,7 +233,7 @@ endpoint.
             return request
 
     my_vcr = vcr.VCR(
-        before_record = before_record_cb,
+        before_record_request = before_record_cb,
     )
     with my_vcr.use_cassette('test.yml'):
         # your http code here
@@ -229,7 +250,7 @@ path.
         return request
 
     my_vcr = vcr.VCR(
-        before_record=scrub_login_request,
+        before_record_request=scrub_login_request,
     )
     with my_vcr.use_cassette('test.yml'):
         # your http code here

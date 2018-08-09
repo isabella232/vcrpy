@@ -189,14 +189,14 @@ class VCRConnection(object):
 
     def _url(self, uri):
         """Returns request selector url from absolute URI"""
-        prefix = "{0}://{1}{2}".format(
+        prefix = "{}://{}{}".format(
             self._protocol,
             self.real_connection.host,
             self._port_postfix(),
         )
         return uri.replace(prefix, '', 1)
 
-    def request(self, method, url, body=None, headers=None):
+    def request(self, method, url, body=None, headers=None, *args, **kwargs):
         '''Persist the request metadata in self._vcr_request'''
         self._vcr_request = Request(
             method=method,
@@ -204,7 +204,7 @@ class VCRConnection(object):
             body=body,
             headers=transform_proxy_headers(headers or {})
         )
-        log.debug('Got {0}'.format(self._vcr_request))
+        log.debug('Got {}'.format(self._vcr_request))
 
         # Note: The request may not actually be finished at this point, so
         # I'm not sending the actual request until getresponse().  This
@@ -223,7 +223,7 @@ class VCRConnection(object):
             body="",
             headers={}
         )
-        log.debug('Got {0}'.format(self._vcr_request))
+        log.debug('Got {}'.format(self._vcr_request))
 
     def putheader(self, header, *values):
         self._vcr_request.headers.update(transform_proxy_headers({header: values}))
@@ -257,7 +257,7 @@ class VCRConnection(object):
         # then return it
         if self.cassette.can_play_response_for(self._vcr_request):
             log.info(
-                "Playing response for {0} from cassette".format(
+                "Playing response for {} from cassette".format(
                     self._vcr_request
                 )
             )
@@ -279,7 +279,7 @@ class VCRConnection(object):
             # and return it.
 
             log.info(
-                "{0} not in cassette, sending to real server".format(
+                "{} not in cassette, sending to real server".format(
                     self._vcr_request
                 )
             )
@@ -333,7 +333,9 @@ class VCRConnection(object):
             # Cassette is write-protected, don't actually connect
             return
 
-        return self.real_connection.connect(*args, **kwargs)
+        from vcr.patch import force_reset
+        with force_reset():
+            return self.real_connection.connect(*args, **kwargs)
 
     @property
     def sock(self):
@@ -400,6 +402,24 @@ class VCRConnection(object):
         self._proxied_port = port or {'https': 443, 'http': 80}[self._protocol]
 
         self.real_connection.set_tunnel(host, port, headers)
+
+
+    def __getattr__(self, name):
+        """
+        Send requests for weird attributes up to the real connection
+        (counterpart to __setattr above)
+        """
+        if self.__dict__.get('real_connection'):
+            # check in case real_connection has not been set yet, such as when
+            # we're setting the real_connection itself for the first time
+            return getattr(self.real_connection, name)
+
+        return super(VCRConnection, self).__getattr__(name)
+
+
+for k, v in HTTPConnection.__dict__.items():
+    if isinstance(v, staticmethod):
+        setattr(VCRConnection, k, v)
 
 
 class VCRHTTPConnection(VCRConnection):
